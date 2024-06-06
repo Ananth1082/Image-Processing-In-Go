@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"image"
-	"image/color"
+	_ "image/color"
+	_ "image/jpeg"
 	"image/png"
 	"os"
 
+	"github.com/nfnt/resize"
 )
 
 // loadImage loads an image from a file and decodes it.
@@ -51,28 +53,73 @@ func isTransparent(img image.Image, x, y int) bool {
 	}
 }
 
+// func max(a, b int) int {
+// 	if a > b {
+// 		return a
+// 	} else {
+// 		return b
+// 	}
+// }
+// func min(a, b int) int {
+// 	if a > b {
+// 		return b
+// 	} else {
+// 		return a
+// 	}
+// }
+
+func ImageResizing(img image.Image, xScale uint, yScale uint) image.Image {
+	//0 in x or y scale causes fallback based on aspect ratio
+	resizedImg := resize.Resize(uint(img.Bounds().Dx())*xScale, uint(img.Bounds().Dy())*yScale, img, resize.Lanczos2)
+
+	out, err := os.Create("output.png")
+	if err != nil {
+		panic(err)
+	}
+	out.Close()
+	return resizedImg
+}
 
 func main() {
 	// Load the foreground image
 	foregroundImage, err := loadImage("google.png")
+
 	if err != nil {
 		fmt.Printf("Failed to load image: %v\n", err)
 		return
 	}
+	backgroundImage, err := loadImage("background.jpg")
+	if err != nil {
+		panic(err)
+	}
+	//resize to make foreground compatible with background
+	foregroundImageHeight := foregroundImage.Bounds().Dy()
+	// foregroundImageWidth := foregroundImage.Bounds().Dx()
+	backgroundImageHieght := backgroundImage.Bounds().Dy()
+	backgroundImageWidth := backgroundImage.Bounds().Dx()
 
+	xScale := uint(backgroundImageHieght / foregroundImageHeight)
+
+	resizedForeground := ImageResizing(foregroundImage, xScale, 0)
 	// Create a new image with the same bounds as the foreground image
-	newImage := image.NewNRGBA(foregroundImage.Bounds())
+	// foregroundImageRect := resizedForeground.Bounds()
+	// backgroundImageRect := backgroundImage.Bounds()
+	// x0 := min(foregroundImageRect.Min.X, backgroundImageRect.Min.X)
+	// x1 := max(foregroundImageRect.Max.X, backgroundImageRect.Max.X)
+	// y0 := min(foregroundImage.Bounds().Min.Y, backgroundImage.Bounds().Min.Y)
+	// y1 := max(foregroundImage.Bounds().Max.Y, backgroundImage.Bounds().Max.Y)
+	newImage := image.NewNRGBA(image.Rect(0, 0, backgroundImageWidth, backgroundImageHieght))
 
 	// Iterate over each pixel in the foreground image
-	for x := 0; x < foregroundImage.Bounds().Dx(); x++ {
-		for y := 0; y < foregroundImage.Bounds().Dy(); y++ {
-			if isTransparent(foregroundImage, x, y) {
+	for x := 0; x < newImage.Rect.Dx(); x++ {
+		for y := 0; y < newImage.Rect.Dx(); y++ {
+			if isTransparent(resizedForeground, x, y) {
 				//fallback on background pixel
-				newImage.Set(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+				newImage.Set(x, y, backgroundImage.At(x, y))
 			} else {
 				// Copy the pixel from the foreground image
-				newImage.Set(x, y, foregroundImage.At(x, y))
-			} 
+				newImage.Set(x, y, resizedForeground.At(x, y))
+			}
 		}
 	}
 
@@ -82,6 +129,10 @@ func main() {
 		fmt.Printf("Failed to save image: %v\n", err)
 		return
 	}
+
+	// defer out.Close()
+
+	// jpeg.Encode(out, resizedImg,nil)
 
 	fmt.Println("Image processing completed successfully")
 }
